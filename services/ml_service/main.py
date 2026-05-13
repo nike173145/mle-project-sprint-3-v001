@@ -4,8 +4,10 @@ from typing import Union
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-
-from fast_api_handler import FastApiHandler
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Histogram
+from prometheus_client import Counter
+from ml_service.fast_api_handler import FastApiHandler
 
 
 class ModelParams(BaseModel):
@@ -93,6 +95,20 @@ app = FastAPI(
 )
 
 app.handler = FastApiHandler()
+
+instrumentator = Instrumentator()
+instrumentator.instrument(app).expose(app)
+
+main_app_predictions = Histogram(
+    # имя метрики
+    "main_app_predictions",
+    #описание метрики
+    "Histogram of predictions",
+    #указаываем корзины для гистограммы
+    buckets=(1, 2, 4, 5, 10)
+)
+
+main_app_counter_pos = Counter("main_app_counter_pos", "Count of positive predictions")
 
 
 @app.get("/")

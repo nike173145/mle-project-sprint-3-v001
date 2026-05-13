@@ -4,3 +4,5 @@ pandas
 numpy
 scikit-learn
 catboost
+prometheus-fastapi-instrumentator
+prometheus-client
