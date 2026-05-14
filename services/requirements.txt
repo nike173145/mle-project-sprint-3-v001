@@ -6,3 +6,4 @@ scikit-learn
 catboost
 prometheus-fastapi-instrumentator
 prometheus-client
+requests

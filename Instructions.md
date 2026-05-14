@@ -203,14 +203,23 @@ curl -X POST "http://127.0.0.1:1703/predict" \
 ```
 
 ## 4. Скрипт симуляции нагрузки
-Скрипт генерирует <...> запросов в течение <...> секунд ...
+Скрипт генерирует 40 запросов в течение 110 секунд 
 
 ```
 # команды необходимые для запуска скрипта
-...
+
+cd service
+
+# если нет venv то создаем и активируем
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# запуск скрипта
+python3 test_requests.py
 ```
 
 Адреса сервисов:
-- микросервис: http://localhost:<port>
-- Prometheus: ...
-- Grafana: ...
+- микросервис: http://localhost:1703/
+- Prometheus: http://localhost:9090/
+- Grafana: http://localhost:3000/

@@ -5,8 +5,8 @@ from typing import Union
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_client import Histogram
-from prometheus_client import Counter
+from prometheus_client import Histogram, Counter
+
 from ml_service.fast_api_handler import FastApiHandler
 
 
@@ -96,33 +96,112 @@ app = FastAPI(
 
 app.handler = FastApiHandler()
 
+
 instrumentator = Instrumentator()
 instrumentator.instrument(app).expose(app)
 
+
+
 main_app_predictions = Histogram(
-    # имя метрики
     "main_app_predictions",
-    #описание метрики
-    "Histogram of predictions",
-    #указаываем корзины для гистограммы
-    buckets=(1, 2, 4, 5, 10)
+    "Histogram of predicted real estate prices",
+    buckets=(
+        1_000_000,
+        3_000_000,
+        5_000_000,
+        7_000_000,
+        10_000_000,
+        15_000_000,
+        20_000_000,
+        30_000_000,
+        50_000_000,
+    ),
 )
 
-main_app_counter_pos = Counter("main_app_counter_pos", "Count of positive predictions")
+
+main_app_prediction_requests = Counter(
+    "main_app_prediction_requests",
+    "Count of prediction requests",
+)
+
+
+main_app_positive_predictions = Counter(
+    "main_app_positive_predictions",
+    "Count of positive predictions",
+)
+
+
+def request_to_dict(request: PredictionRequest) -> dict:
+    """Преобразует Pydantic-модель в словарь.
+
+    Поддерживает Pydantic v1 и Pydantic v2.
+    """
+
+    if hasattr(request, "model_dump"):
+        return request.model_dump()
+
+    return request.dict()
+
+
+def extract_predictions(response: dict) -> list[float]:
+    """Достаёт предсказания из ответа обработчика.
+
+    Поддерживает разные возможные форматы ответа:
+    {
+        "prediction": 12345678.9
+    }
+
+    или
+
+    {
+        "predictions": [12345678.9, 9876543.2]
+    }
+    """
+
+    if not isinstance(response, dict):
+        return []
+
+    predictions = None
+
+    if "predictions" in response:
+        predictions = response["predictions"]
+    elif "prediction" in response:
+        predictions = response["prediction"]
+
+    if predictions is None:
+        return []
+
+    if not isinstance(predictions, list):
+        predictions = [predictions]
+
+    result = []
+
+    for prediction in predictions:
+        try:
+            result.append(float(prediction))
+        except (TypeError, ValueError):
+            continue
+
+    return result
 
 
 @app.get("/")
 def root() -> dict:
     """Проверка работоспособности сервиса."""
 
-    return {"service": "prediction_service", "status": "ok"}
+    return {
+        "service": "prediction_service",
+        "status": "ok",
+    }
 
 
 @app.get("/health")
 def health() -> dict:
     """Health-check endpoint."""
 
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+    }
 
 
 @app.post("/predict")
@@ -130,7 +209,26 @@ def predict(request: PredictionRequest) -> dict:
     """Получает предсказание модели."""
 
     try:
-        response = app.handler.handle(request.dict())
+        # Считаем количество запросов к endpoint /predict.
+        main_app_prediction_requests.inc()
+
+        # Преобразуем входной запрос в словарь.
+        request_dict = request_to_dict(request)
+
+        # Получаем предсказание модели.
+        response = app.handler.handle(request_dict)
+
+        # Достаём предсказания из ответа.
+        predictions = extract_predictions(response)
+
+        # Записываем значения предсказаний в Histogram.
+        for prediction in predictions:
+            main_app_predictions.observe(prediction)
+
+            # Считаем положительные предсказания.
+            if prediction > 0:
+                main_app_positive_predictions.inc()
+
         return response
 
     except ValueError as error:
